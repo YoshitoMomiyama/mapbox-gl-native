@@ -27,6 +27,21 @@
 const CGPoint MGLLogoImagePosition = CGPointMake(8, 8);
 const CGFloat MGLSnapshotterMinimumPixelSize = 64;
 
+@interface MGLSnapshotAttributionOptions : NSObject
+#if TARGET_OS_IPHONE
+@property (nonatomic) UIImage *logoImage;
+#else
+@property (nonatomic) NSImage *logoImage;
+#endif
+
+@property (nonatomic) CGSize size;
+
+@property (nonatomic) NS_ARRAY_OF(MGLAttributionInfo *) *attributionInfo;
+
+@end
+
+
+
 @implementation MGLMapSnapshotOptions
 
 - (instancetype _Nonnull)initWithStyleURL:(nullable NSURL *)styleURL camera:(MGLMapCamera *)camera size:(CGSize) size
