@@ -110,6 +110,7 @@ private:
     std::unique_ptr<Placement> placement;
 
     bool contextLost = false;
+    bool fadingTiles = false;
 };
 
 } // namespace mbgl

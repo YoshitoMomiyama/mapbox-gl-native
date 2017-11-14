@@ -95,6 +95,10 @@ public:
         return loaded && !pending;
     }
     
+    bool excludeFromPlacement = false;
+    bool needsFadePlacement = true;
+    bool needsFadeTime = true;
+    
     virtual void resetCrossTileIDs() {};
 
     void dumpDebugLogs() const;

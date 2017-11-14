@@ -148,9 +148,19 @@ void TilePyramid::update(const std::vector<Immutable<style::Layer::Impl>>& layer
         }
         return tiles.emplace(tileID, std::move(tile)).first->second.get();
     };
+
+    std::map<UnwrappedTileID, Tile*> previouslyRenderedTiles;
+    for (auto& renderTile : renderTiles) {
+        previouslyRenderedTiles[renderTile.id] = &renderTile.tile;
+    }
+
     auto renderTileFn = [&](const UnwrappedTileID& tileID, Tile& tile) {
         renderTiles.emplace_back(tileID, tile);
         rendered.emplace(tileID);
+        previouslyRenderedTiles.erase(tileID); // Still rendering this tile, no need for special fading logic.
+        tile.needsFadePlacement = true; // Reset these in case it was fading but has become an ideal tile again
+        tile.needsFadeTime = true;
+        tile.excludeFromPlacement = false;
     };
 
     renderTiles.clear();
@@ -162,6 +172,16 @@ void TilePyramid::update(const std::vector<Immutable<style::Layer::Impl>>& layer
 
     algorithm::updateRenderables(getTileFn, createTileFn, retainTileFn, renderTileFn,
                                  idealTiles, zoomRange, tileZoom);
+    
+    for (auto previouslyRenderedTile : previouslyRenderedTiles) {
+        Tile& tile = *previouslyRenderedTile.second;
+        if (tile.needsFadePlacement || tile.needsFadeTime) {
+            retainTileFn(tile, TileNecessity::Required);
+            renderTiles.emplace_back(previouslyRenderedTile.first, tile);
+            rendered.emplace(previouslyRenderedTile.first);
+            tile.excludeFromPlacement = true;
+        }
+    }
 
     if (type != SourceType::Annotations) {
         size_t conservativeCacheSize =

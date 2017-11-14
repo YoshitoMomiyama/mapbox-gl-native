@@ -46,7 +46,6 @@ void Placement::placeLayer(RenderSymbolLayer& symbolLayer, const mat4& projMatri
     std::unordered_set<uint32_t> seenCrossTileIDs;
 
     for (RenderTile& renderTile : symbolLayer.renderTiles) {
-
         if (!renderTile.tile.isRenderable()) {
             continue;
         }
@@ -78,7 +77,7 @@ void Placement::placeLayer(RenderSymbolLayer& symbolLayer, const mat4& projMatri
                 state,
                 pixelsToTileUnits);
 
-        placeLayerBucket(symbolBucket, posMatrix, textLabelPlaneMatrix, iconLabelPlaneMatrix, scale, textPixelRatio, showCollisionBoxes, seenCrossTileIDs);
+        placeLayerBucket(symbolBucket, posMatrix, textLabelPlaneMatrix, iconLabelPlaneMatrix, scale, textPixelRatio, showCollisionBoxes, seenCrossTileIDs, renderTile.tile.excludeFromPlacement);
     }
 }
 
@@ -90,7 +89,8 @@ void Placement::placeLayerBucket(
         const float scale,
         const float textPixelRatio,
         const bool showCollisionBoxes,
-        std::unordered_set<uint32_t>& seenCrossTileIDs) {
+        std::unordered_set<uint32_t>& seenCrossTileIDs,
+        const bool excludeFromPlacement) {
 
     auto partiallyEvaluatedTextSize = bucket.textSizeBinder->evaluateForZoom(state.getZoom());
     auto partiallyEvaluatedIconSize = bucket.iconSizeBinder->evaluateForZoom(state.getZoom());
@@ -101,58 +101,63 @@ void Placement::placeLayerBucket(
     for (auto& symbolInstance : bucket.symbolInstances) {
 
         if (seenCrossTileIDs.count(symbolInstance.crossTileID) == 0) {
-            bool placeText = false;
-            bool placeIcon = false;
-            bool offscreen = true;
+            if (excludeFromPlacement) {
+                placements.emplace(symbolInstance.crossTileID, JointPlacement(false, false, false));
+            } else {
+                bool placeText = false;
+                bool placeIcon = false;
+                bool offscreen = true;
+            
 
-            if (symbolInstance.placedTextIndex) {
-                PlacedSymbol& placedSymbol = bucket.text.placedSymbols.at(*symbolInstance.placedTextIndex);
-                const float fontSize = evaluateSizeForFeature(partiallyEvaluatedTextSize, placedSymbol);
+                if (symbolInstance.placedTextIndex) {
+                    PlacedSymbol& placedSymbol = bucket.text.placedSymbols.at(*symbolInstance.placedTextIndex);
+                    const float fontSize = evaluateSizeForFeature(partiallyEvaluatedTextSize, placedSymbol);
 
-                auto placed = collisionIndex.placeFeature(symbolInstance.textCollisionFeature,
-                        posMatrix, textLabelPlaneMatrix, textPixelRatio,
-                        placedSymbol, scale, fontSize,
-                        bucket.layout.get<TextAllowOverlap>(),
-                        bucket.layout.get<TextPitchAlignment>() == style::AlignmentType::Map,
-                        showCollisionBoxes);
-                placeText = placed.first;
-                offscreen &= placed.second;
+                    auto placed = collisionIndex.placeFeature(symbolInstance.textCollisionFeature,
+                            posMatrix, textLabelPlaneMatrix, textPixelRatio,
+                            placedSymbol, scale, fontSize,
+                            bucket.layout.get<TextAllowOverlap>(),
+                            bucket.layout.get<TextPitchAlignment>() == style::AlignmentType::Map,
+                            showCollisionBoxes);
+                    placeText = placed.first;
+                    offscreen &= placed.second;
+                }
+
+                if (symbolInstance.placedIconIndex) {
+                    PlacedSymbol& placedSymbol = bucket.icon.placedSymbols.at(*symbolInstance.placedIconIndex);
+                    const float fontSize = evaluateSizeForFeature(partiallyEvaluatedIconSize, placedSymbol);
+
+                    auto placed = collisionIndex.placeFeature(symbolInstance.iconCollisionFeature,
+                            posMatrix, iconLabelPlaneMatrix, textPixelRatio,
+                            placedSymbol, scale, fontSize,
+                            bucket.layout.get<IconAllowOverlap>(),
+                            bucket.layout.get<IconPitchAlignment>() == style::AlignmentType::Map,
+                            showCollisionBoxes);
+                    placeIcon = placed.first;
+                    offscreen &= placed.second;
+                }
+
+                // combine placements for icon and text
+                if (!iconWithoutText && !textWithoutIcon) {
+                    placeText = placeIcon = placeText && placeIcon;
+                } else if (!textWithoutIcon) {
+                    placeText = placeText && placeIcon;
+                } else if (!iconWithoutText) {
+                    placeIcon = placeText && placeIcon;
+                }
+
+                if (placeText) {
+                    collisionIndex.insertFeature(symbolInstance.textCollisionFeature, bucket.layout.get<TextIgnorePlacement>());
+                }
+
+                if (placeIcon) {
+                    collisionIndex.insertFeature(symbolInstance.iconCollisionFeature, bucket.layout.get<IconIgnorePlacement>());
+                }
+
+                assert(symbolInstance.crossTileID != 0);
+
+                placements.emplace(symbolInstance.crossTileID, JointPlacement(placeText, placeIcon, offscreen));
             }
-
-            if (symbolInstance.placedIconIndex) {
-                PlacedSymbol& placedSymbol = bucket.icon.placedSymbols.at(*symbolInstance.placedIconIndex);
-                const float fontSize = evaluateSizeForFeature(partiallyEvaluatedIconSize, placedSymbol);
-
-                auto placed = collisionIndex.placeFeature(symbolInstance.iconCollisionFeature,
-                        posMatrix, iconLabelPlaneMatrix, textPixelRatio,
-                        placedSymbol, scale, fontSize,
-                        bucket.layout.get<IconAllowOverlap>(),
-                        bucket.layout.get<IconPitchAlignment>() == style::AlignmentType::Map,
-                        showCollisionBoxes);
-                placeIcon = placed.first;
-                offscreen &= placed.second;
-            }
-
-            // combine placements for icon and text
-            if (!iconWithoutText && !textWithoutIcon) {
-                placeText = placeIcon = placeText && placeIcon;
-            } else if (!textWithoutIcon) {
-                placeText = placeText && placeIcon;
-            } else if (!iconWithoutText) {
-                placeIcon = placeText && placeIcon;
-            }
-
-            if (placeText) {
-                collisionIndex.insertFeature(symbolInstance.textCollisionFeature, bucket.layout.get<TextIgnorePlacement>());
-            }
-
-            if (placeIcon) {
-                collisionIndex.insertFeature(symbolInstance.iconCollisionFeature, bucket.layout.get<IconIgnorePlacement>());
-            }
-
-            assert(symbolInstance.crossTileID != 0);
-
-            placements.emplace(symbolInstance.crossTileID, JointPlacement(placeText, placeIcon, offscreen));
             seenCrossTileIDs.insert(symbolInstance.crossTileID);
         }
     } 

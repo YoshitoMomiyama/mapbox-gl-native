@@ -375,6 +375,7 @@ void Renderer::Impl::render(const UpdateParameters& updateParameters) {
     }
 
     bool placementChanged = false;
+    fadingTiles = false;
     if (!placement->stillRecent(parameters.timePoint)) {
         auto newPlacement = std::make_unique<Placement>(parameters.state, parameters.mapMode);
         for (auto it = order.rbegin(); it != order.rend(); ++it) {
@@ -389,6 +390,19 @@ void Renderer::Impl::render(const UpdateParameters& updateParameters) {
         }
 
         placement->setRecent(parameters.timePoint);
+        
+        for (auto& source : renderSources) {
+            for (auto& renderTile : source.second->getRenderTiles()) {
+                Tile& tile = renderTile.get().tile;
+                if (tile.needsFadePlacement) {
+                    fadingTiles = true;
+                    tile.needsFadePlacement = false;
+                } else if (tile.needsFadeTime) {
+                    fadingTiles = true;
+                    tile.needsFadeTime = false;
+                }
+            }
+        }
     } else {
         placement->setStale();
     }
@@ -733,6 +747,10 @@ bool Renderer::Impl::hasTransitions(TimePoint timePoint) const {
     }
 
     if (placement->hasTransitions(timePoint)) {
+        return true;
+    }
+    
+    if (fadingTiles) {
         return true;
     }
 
