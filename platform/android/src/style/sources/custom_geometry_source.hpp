@@ -13,7 +13,7 @@
 namespace mbgl {
 namespace android {
 
-class CustomGeometrySource : public Source {
+class CustomGeometrySource : public Source, public std::enable_shared_from_this<CustomGeometrySource> {
 public:
 
     static constexpr auto Name() { return "com/mapbox/mapboxsdk/style/sources/CustomGeometrySource"; };
@@ -29,6 +29,8 @@ public:
 
     ~CustomGeometrySource();
 
+    void addToMap(mbgl::Map&) override;
+
     void fetchTile(const mbgl::CanonicalTileID& tileID);
     void cancelTile(const mbgl::CanonicalTileID& tileID);
     void setTileData(jni::JNIEnv& env, jni::jint z, jni::jint x, jni::jint y, jni::Object<geojson::FeatureCollection> jf);
@@ -39,9 +41,14 @@ public:
     jni::Array<jni::Object<geojson::Feature>> querySourceFeatures(jni::JNIEnv&,
                                                                   jni::Array<jni::Object<>> );
 
-    jni::jobject* createJavaPeer(jni::JNIEnv&);
+    jni::jobject* createJavaPeer(jni::JNIEnv&) override;
 
+    // Use a strong global reference to enable fetch/cancel methods to call java peer from any thread
     jni::UniqueObject<CustomGeometrySource> javaPeer;
+
+    // Use a weak reference to the peer until the source is added to the map.
+    GenericUniqueWeakObject<CustomGeometrySource> weakJavaPeer;
+
 }; // class CustomGeometrySource
 
 } // namespace android

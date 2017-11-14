@@ -40,7 +40,7 @@ public:
 
     style::Source& get();
 
-    void addToMap(mbgl::Map&);
+    virtual void addToMap(mbgl::Map&);
 
     void setRendererFrontend(AndroidRendererFrontend&);
 
